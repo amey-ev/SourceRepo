@@ -1,7 +1,9 @@
-name: Move Folder with History
+name: Move Folder with History on Push
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main  # Trigger the action only for push events on the 'main' branch
 
 jobs:
   move-folder:
@@ -26,20 +28,24 @@ jobs:
         git config --global user.name "amey-ev"
         git config --global user.email "amey.bhogaonkar@everestek.com"
 
-    - name: Filter out the folder from the source repository
+    - name: Fetch latest commit from the source repository
       run: |
-        git clone https://github.com/amey-ev/SourceRepo SourceRepo
         cd SourceRepo
-        git filter-repo --path codebase/ --path-rename codebase/:
+        git pull origin main  # Make sure the latest commit is pulled from the source repo
+
+    - name: Filter out the folder from the source repository and preserve history
+      run: |
+        cd SourceRepo
+        git filter-repo --path codebase/ --path-rename codebase/:  # Keeps history of 'codebase' folder
 
     - name: Copy folder to target repository
       run: |
         cd ../DestinationRepo
-        cp -r ../SourceRepo/codebase .
+        cp -r ../SourceRepo/codebase .  # Copy the folder with its history
 
-    - name: Commit and push changes
+    - name: Commit and push changes to target repository
       run: |
         cd DestinationRepo
         git add .
         git commit -m "Move folder with history"
-        git push origin main  # or the appropriate branch
+        git push origin main  # or the appropriate branch in the target repository
