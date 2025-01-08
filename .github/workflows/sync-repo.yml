@@ -1,57 +1,39 @@
-name: Sync Folders with Commit History
+name: Copy Folder with History
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main  # Or another branch to trigger the action
 
 jobs:
-  sync_repos:
+  copy-folder:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout DestinationRepo
-        uses: actions/checkout@v3
-        with:
-          repository: your-username/DestinationRepo
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: destination
+    - name: Checkout the source repository
+      uses: actions/checkout@v3
+      with:
+        repository: amey-ev/SourceRepo
+        ref: main  # Or another branch
+        token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout SourceRepo
-        run: |
-          git clone https://github.com/your-username/SourceRepo.git source
-          cd source
-          git fetch origin main
-          git checkout main
+    - name: Checkout the destination repository (DestinationRepo)
+      uses: actions/checkout@v3
+      with:
+        repository: amey-ev/DestinationRepo
+        token: ${{ secrets.GITHUB_TOKEN }}
+        path: DestinationRepo/TestFolders
 
-      - name: Copy folders from SourceRepo to DestinationRepo while preserving commit history
-        run: |
-          cd destination
+    - name: Copy folder from source to destination repository
+      run: |
+        mkdir -p DestinationRepo/TestFolders
+        git --no-pager log --oneline --reverse --pretty=format:"%H" SourceRepo/codebase | while read commit_hash; do
+          git checkout $commit_hash -- SourceRepo/path/to/source/folder
+          cp -r SourceRepo/codebase DestinationRepo/TestFolders
+          git -C DestinationRepo add TestFolders
+          git -C DestinationRepo commit --amend --no-edit --date "$(date)"
+        done
 
-          # Create a new branch for the sync process
-          git checkout -b sync-from-source
-
-          # Add the folders from the SourceRepo as submodules
-          git submodule add https://github.com/your-username/SourceRepo.git source_repo
-          git submodule update --init --recursive
-
-          # Move specific folders to TestFolders in DestinationRepo
-          mv source_repo/quickstart destination/TestFolders/quickstart
-          mv source_repo/testbench destination/TestFolders/testbench
-          mv source_repo/devtools destination/TestFolders/devtools
-          mv source_repo/codebase destination/TestFolders/codebase
-
-      - name: Commit and push changes to DestinationRepo
-        run: |
-          cd destination
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "Sync quickstart, testbench, devtools, and codebase from SourceRepo with commit history"
-          git push origin sync-from-source
-
-      - name: Merge changes into main branch in DestinationRepo
-        run: |
-          cd destination
-          git checkout main
-          git merge sync-from-source
-          git push origin main
+    - name: Push changes to destination repository
+      run: |
+        git -C DestinationRepo push origin main  # Or the branch you want to push to
