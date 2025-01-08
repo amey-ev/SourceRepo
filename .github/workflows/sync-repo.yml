@@ -1,39 +1,45 @@
-name: Copy Folder with History
+name: Move Folder with History
 
 on:
-  push:
-    branches:
-      - main  # Or another branch to trigger the action
+  workflow_dispatch:
 
 jobs:
-  copy-folder:
+  move-folder:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout the source repository
+    - name: Checkout source repository
       uses: actions/checkout@v3
       with:
         repository: amey-ev/SourceRepo
-        ref: main  # Or another branch
         token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Checkout the destination repository (DestinationRepo)
+    - name: Checkout target repository
       uses: actions/checkout@v3
       with:
         repository: amey-ev/DestinationRepo
         token: ${{ secrets.GITHUB_TOKEN }}
-        path: DestinationRepo/TestFolders
+        path: DestinationRepo
 
-    - name: Copy folder from source to destination repository
+    - name: Set up Git
       run: |
-        mkdir -p DestinationRepo/TestFolders
-        git --no-pager log --oneline --reverse --pretty=format:"%H" SourceRepo/codebase | while read commit_hash; do
-          git checkout $commit_hash -- SourceRepo/path/to/source/folder
-          cp -r SourceRepo/codebase DestinationRepo/TestFolders
-          git -C DestinationRepo add TestFolders
-          git -C DestinationRepo commit --amend --no-edit --date "$(date)"
-        done
+        git config --global user.name "amey-ev"
+        git config --global user.email "amey.bhogaonkar@everestek.com"
 
-    - name: Push changes to destination repository
+    - name: Filter out the folder from the source repository
       run: |
-        git -C DestinationRepo push origin main  # Or the branch you want to push to
+        git clone https://github.com/amey-ev/SourceRepo SourceRepo
+        cd SourceRepo
+        git filter-repo --path codebase/ --path-rename codebase/:
+
+    - name: Copy folder to target repository
+      run: |
+        cd ../DestinationRepo
+        cp -r ../SourceRepo/codebase .
+
+    - name: Commit and push changes
+      run: |
+        cd DestinationRepo
+        git add .
+        git commit -m "Move folder with history"
+        git push origin main  # or the appropriate branch
