@@ -15,13 +15,14 @@ jobs:
       with:
         repository: amey-ev/SourceRepo
         token: ${{ secrets.GITHUB_TOKEN }}
+        path: source-repo  # Checkout SourceRepo into 'source-repo' folder
 
     - name: Checkout target repository
       uses: actions/checkout@v3
       with:
         repository: amey-ev/DestinationRepo
         token: ${{ secrets.GITHUB_TOKEN }}
-        path: DestinationRepo
+        path: destination-repo  # Checkout DestinationRepo into 'destination-repo' folder
 
     - name: Set up Git
       run: |
@@ -30,22 +31,22 @@ jobs:
 
     - name: Fetch latest commit from the source repository
       run: |
-        cd SourceRepo
-        git pull origin main  # Make sure the latest commit is pulled from the source repo
+        cd source-repo  # Navigate to the 'source-repo' directory
+        git pull origin main  # Pull the latest changes
 
-    - name: Filter out the folder from the source repository and preserve history
+    - name: Filter the 'codebase' folder from the source repository and preserve history
       run: |
-        cd SourceRepo
-        git filter-repo --path codebase/ --path-rename codebase/:  # Keeps history of 'codebase' folder
+        cd source-repo  # Navigate to the 'source-repo' directory
+        git filter-repo --path codebase/ --path-rename codebase/:  # Preserve history of the 'codebase' folder
 
-    - name: Copy folder to target repository
+    - name: Copy the 'codebase' folder to target repository
       run: |
-        cd ../DestinationRepo
-        cp -r ../SourceRepo/codebase .  # Copy the folder with its history
+        cd destination-repo  # Navigate to the 'destination-repo' directory
+        cp -r ../source-repo/codebase .  # Copy the 'codebase' folder with history
 
-    - name: Commit and push changes to target repository
+    - name: Commit and push changes to the target repository
       run: |
-        cd DestinationRepo
+        cd destination-repo  # Navigate to the 'destination-repo' directory
         git add .
-        git commit -m "Move folder with history"
-        git push origin main  # or the appropriate branch in the target repository
+        git commit -m "Move codebase folder with history"
+        git push origin main  # Push the changes to the 'main' branch of the target repository
