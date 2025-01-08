@@ -52,6 +52,7 @@ jobs:
 
     - name: Set up authentication using PAT
       run: |
+        cd destination-repo  # Ensure you're in the target repository directory
         git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/amey-ev/DestinationRepo.git  # Set remote URL using the PAT
 
     - name: Copy the 'codebase' folder to the target repository using git
