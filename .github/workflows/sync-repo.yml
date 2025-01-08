@@ -29,10 +29,16 @@ jobs:
         git config --global user.name "amey-ev"
         git config --global user.email "amey.bhogaonkar@everestek.com"
 
+    - name: Install git-filter-repo
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-pip
+        pip3 install git-filter-repo  # Install git-filter-repo
+
     - name: Fetch latest commit from the source repository
       run: |
         cd source-repo  # Navigate to the 'source-repo' directory
-        git pull origin main  # Pull the latest changes
+        git pull origin main  # Pull the latest changes from the source repository
 
     - name: Filter the 'codebase' folder from the source repository and preserve history
       run: |
@@ -42,7 +48,7 @@ jobs:
     - name: Copy the 'codebase' folder to target repository
       run: |
         cd destination-repo  # Navigate to the 'destination-repo' directory
-        cp -r ../source-repo/codebase .  # Copy the 'codebase' folder with history
+        cp -r ../source-repo/codebase .  # Copy the 'codebase' folder with history to the destination repo
 
     - name: Commit and push changes to the target repository
       run: |
