@@ -45,10 +45,16 @@ jobs:
         cd source-repo  # Navigate to the 'source-repo' directory
         git filter-repo --path codebase/ --path-rename codebase/:  # Preserve history of the 'codebase' folder
 
-    - name: Copy the 'codebase' folder to target repository
+    - name: Prepare the target repository
       run: |
         cd destination-repo  # Navigate to the 'destination-repo' directory
-        cp -r ../source-repo/codebase .  # Copy the 'codebase' folder with history to the destination repo
+        git checkout main  # Ensure we are on the 'main' branch of the target repo
+
+    - name: Copy the 'codebase' folder to the target repository using git
+      run: |
+        cd source-repo  # Navigate to the 'source-repo' directory
+        git remote add destination https://github.com/amey-ev/DestinationRepo.git  # Add remote for DestinationRepo
+        git push destination main  # Push the filtered 'codebase' folder to the target repository
 
     - name: Commit and push changes to the target repository
       run: |
