@@ -3,7 +3,7 @@ name: Sync Lambda to Terraform
 on:
   push:
     branches:
-      - main  # Runs when code is pushed to main
+      - main  # Runs only on changes to `main`
 
 jobs:
   sync:
@@ -12,49 +12,45 @@ jobs:
     steps:
       - name: Checkout Lambda Repo
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 2  # Get the last 2 commits to check changes
 
-      - name: Run Bash Script to Zip Selected Folders
+      - name: Get Changed Folders
+        id: changed_folders
         run: |
-          #!/bin/bash
+          echo "🔍 Checking changed folders..."
+          CHANGED_FOLDERS=$(git diff --name-only HEAD^ HEAD | awk -F'/' '{print $1}' | sort -u)
+          
+          # Convert to a space-separated string for later use
+          echo "folders=$CHANGED_FOLDERS" >> $GITHUB_ENV
+          echo "📝 Changed folders: $CHANGED_FOLDERS"
 
-          REPO_URL="https://github.com/YOUR_GITHUB_USERNAME/YOUR_LAMBDA_REPO.git"
-          TEMP_DIR="repo_temp"
-          BASE_DIR="lambdas"
-          FOLDERS=("devtools" "codebase" "quickstart" "testbench")
-
-          echo "🚀 Cloning repository..."
-          git clone "$REPO_URL" "$TEMP_DIR" || { echo "❌ Clone failed. Exiting..."; exit 1; }
-
-          cd "$TEMP_DIR" || exit
-
-          for folder in "${FOLDERS[@]}"; do
-              if [ -d "$folder" ]; then
-                  TARGET_DIR="../$BASE_DIR/$folder"
-                  mkdir -p "$TARGET_DIR"
-
-                  echo "📦 Zipping and moving $folder..."
-                  zip -rq "$TARGET_DIR/$folder.zip" "$folder"
-              else
-                  echo "⚠️ Skipping missing folder: $folder"
-              fi
+      - name: Zip Only Changed Folders
+        run: |
+          for folder in ${{ env.folders }}; do
+            if [ -d "$folder" ]; then
+              echo "📦 Zipping $folder..."
+              zip -r "${folder}.zip" "$folder"
+            fi
           done
-
-          cd ..
-          echo "🧹 Cleaning up..."
-          rm -rf "$TEMP_DIR"
-
-          echo "✅ Done!"
 
       - name: Clone Terraform Repo
         run: |
-          git clone https://github.com/YOUR_GITHUB_USERNAME/YOUR_TERRAFORM_REPO.git terraform-repo
-          mv -v lambdas/* terraform-repo/lambdas/
+          git clone https://github.com/amey-ev/DestinationRepo.git destination-repo
+          for folder in ${{ env.folders }}; do
+            if [ -f "${folder}.zip" ]; then
+              echo "📂 Moving ${folder}.zip to Terraform repo..."
+              mv "${folder}.zip" destination-repo/
+            fi
+          done
+        env:
+          GIT_TOKEN: ${{ secrets.SYNC }}
 
       - name: Commit and Push to Terraform Repo
         run: |
-          cd terraform-repo
+          cd destination-repo
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add lambdas/
-          git commit -m "Updated Lambda zips from latest commit"
-          git push https://x-access-token:${{ secrets.TERRAFORM_REPO_TOKEN }}@github.com/YOUR_GITHUB_USERNAME/YOUR_TERRAFORM_REPO.git main
+          git add *.zip
+          git commit -m "Updated Lambda zips for changed folders"
+          git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git main
