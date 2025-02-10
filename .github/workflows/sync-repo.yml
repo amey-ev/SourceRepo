@@ -27,20 +27,23 @@ jobs:
 
       - name: Zip Only Changed Folders
         run: |
+          mkdir -p zipped_files  # Create a directory for the zips
           for folder in ${{ env.folders }}; do
             if [ -d "$folder" ]; then
               echo "📦 Zipping $folder..."
-              zip -r "${folder}.zip" "$folder"
+              zip -r "zipped_files/${folder}.zip" "$folder"
             fi
           done
 
       - name: Clone Terraform Repo
         run: |
           git clone https://github.com/amey-ev/DestinationRepo.git destination-repo
+          mkdir -p destination-repo/lambdas  # Ensure the target folder exists
+
           for folder in ${{ env.folders }}; do
-            if [ -f "${folder}.zip" ]; then
-              echo "📂 Moving ${folder}.zip to Terraform repo..."
-              mv "${folder}.zip" destination-repo/
+            if [ -f "zipped_files/${folder}.zip" ]; then
+              echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
+              mv "zipped_files/${folder}.zip" "destination-repo/lambdas/"
             fi
           done
         env:
@@ -51,6 +54,6 @@ jobs:
           cd destination-repo
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git add *.zip
+          git add lambdas/
           git commit -m "Updated Lambda zips for changed folders"
           git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git main
