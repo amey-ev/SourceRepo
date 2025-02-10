@@ -1,69 +1,34 @@
-name: Move Folder with History on Push
+name: Sync Lambda to Terraform
 
 on:
   push:
     branches:
-      - main  # Trigger the action only for push events on the 'main' branch
+      - main  # Trigger when code is pushed to main
 
 jobs:
-  move-folder:
+  sync:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout source repository
-      uses: actions/checkout@v3
-      with:
-        repository: amey-ev/SourceRepo
-        token: ${{ secrets.GITHUB_TOKEN }}
-        path: source-repo  # Checkout SourceRepo into 'source-repo' folder
+      - name: Checkout Lambda Repo
+        uses: actions/checkout@v3
 
-    - name: Checkout target repository
-      uses: actions/checkout@v3
-      with:
-        repository: amey-ev/DestinationRepo
-        token: ${{ secrets.GITHUB_TOKEN }}
-        path: destination-repo  # Checkout DestinationRepo into 'destination-repo' folder
+      - name: Zip Lambda Code
+        run: |
+          zip -r lambda.zip . -x "*.git*"  # Exclude Git files
 
-    - name: Set up Git
-      run: |
-        git config --global user.name "amey-ev"
-        git config --global user.email "amey.bhogaonkar@everestek.com"
+      - name: Clone Terraform Repo
+        run: |
+          git clone https://github.com/amey-ev/DestinationRepo.git destination-repo
+          mv lambda.zip destination-repo/
+        env:
+          GIT_TOKEN: ${{ secrets.SYNC }}
 
-    - name: Install git-filter-repo
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-pip
-        pip3 install git-filter-repo  # Install git-filter-repo
-
-    - name: Fetch latest commit from the source repository
-      run: |
-        cd source-repo  # Navigate to the 'source-repo' directory
-        git pull origin main  # Pull the latest changes from the source repository
-
-    - name: Filter the 'codebase' folder from the source repository and preserve history
-      run: |
-        cd source-repo  # Navigate to the 'source-repo' directory
-        git filter-repo --path codebase/ --path-rename codebase/:  # Preserve history of the 'codebase' folder
-
-    - name: Prepare the target repository
-      run: |
-        cd destination-repo  # Navigate to the 'destination-repo' directory
-        git checkout main  # Ensure we are on the 'main' branch of the target repo
-
-    - name: Set up authentication using PAT
-      run: |
-        cd destination-repo  # Ensure you're in the target repository directory
-        git remote set-url origin https://$GITHUB_ACTOR:${{ secrets.GH_PAT }}@github.com/amey-ev/DestinationRepo.git  # Use the GITHUB_ACTOR for authentication
-
-    - name: Copy the 'codebase' folder to the target repository using git
-      run: |
-        cd source-repo  # Navigate to the 'source-repo' directory
-        git remote add destination https://github.com/amey-ev/DestinationRepo.git  # Add remote for DestinationRepo
-        git push destination main  # Push the filtered 'codebase' folder to the target repository
-
-    - name: Commit and push changes to the target repository
-      run: |
-        cd destination-repo  # Navigate to the 'destination-repo' directory
-        git add .
-        git commit -m "Move codebase folder with history"
-        git push origin main  # Push the changes to the 'main' branch of the target repository
+      - name: Commit and Push to Terraform Repo
+        run: |
+          cd terraform-repo
+          git config --global user.email "github-actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git add lambda.zip
+          git commit -m "Updated Lambda zip from latest commit"
+          git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git main
