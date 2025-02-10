@@ -19,9 +19,12 @@ jobs:
         id: changed_folders
         run: |
           echo "🔍 Checking changed folders..."
-          CHANGED_FOLDERS=$(git diff --name-only HEAD^ HEAD | awk -F'/' '{print $1}' | sort -u)
+          CHANGED_FOLDERS=$(git diff --name-only HEAD^ HEAD | awk -F'/' '{print $1}' | sort -u | uniq)
           
-          # Convert to a space-separated string for later use
+          # Convert multi-line output to space-separated string
+          CHANGED_FOLDERS=$(echo "$CHANGED_FOLDERS" | tr '\n' ' ')
+
+          # Export as environment variable
           echo "folders=$CHANGED_FOLDERS" >> $GITHUB_ENV
           echo "📝 Changed folders: $CHANGED_FOLDERS"
 
