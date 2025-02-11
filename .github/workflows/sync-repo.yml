@@ -15,18 +15,37 @@ jobs:
         with:
           fetch-depth: 2  # Get the last 2 commits to check changes
 
-      - name: Get Changed Folders
+      - name: Get Changed Folders & Author Info
         id: changed_folders
         run: |
           echo "🔍 Checking changed folders..."
           CHANGED_FOLDERS=$(git diff --name-only HEAD^ HEAD | awk -F'/' '{print $1}' | sort -u | uniq)
           
-          # Convert multi-line output to space-separated string
-          CHANGED_FOLDERS=$(echo "$CHANGED_FOLDERS" | tr '\n' ' ')
+          # Filter out unwanted folders like .github, .gitignore, etc.
+          FILTERED_FOLDERS=""
+          for folder in $CHANGED_FOLDERS; do
+            if [[ "$folder" != ".github" && "$folder" != ".gitignore" && -d "$folder" ]]; then
+              FILTERED_FOLDERS+="$folder "
+            fi
+          done
 
-          # Export as environment variable
-          echo "folders=$CHANGED_FOLDERS" >> $GITHUB_ENV
-          echo "📝 Changed folders: $CHANGED_FOLDERS"
+          # Convert multi-line output to space-separated string
+          FILTERED_FOLDERS=$(echo "$FILTERED_FOLDERS" | tr '\n' ' ')
+
+          # Get commit author username
+          AUTHOR_NAME=$(git log -1 --pretty=format:'%an' | tr ' ' '-')
+
+          # Get the date in a readable format (e.g., 11th-Feb-2025)
+          DATE_FORMATTED=$(date +"%d-%b-%Y" | sed -E 's/^0//')
+
+          # Export as environment variables
+          echo "folders=$FILTERED_FOLDERS" >> $GITHUB_ENV
+          echo "author=$AUTHOR_NAME" >> $GITHUB_ENV
+          echo "date=$DATE_FORMATTED" >> $GITHUB_ENV
+
+          echo "📝 Valid changed folders: $FILTERED_FOLDERS"
+          echo "👤 Author: $AUTHOR_NAME"
+          echo "📅 Date: $DATE_FORMATTED"
 
       - name: Zip Only Changed Folders
         run: |
@@ -55,11 +74,14 @@ jobs:
               echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
               mv "../zipped_files/${folder}.zip" "lambdas/"
 
-              BRANCH_NAME="update-${folder}-$(date +%Y%m%d%H%M%S)"
+              # Create a readable branch name
+              BRANCH_NAME="update-${folder}-${{ env.author }}-${{ env.date }}"
+              BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-')  # Replace spaces with dashes
+
               git checkout -b "$BRANCH_NAME"
               
               git add "lambdas/${folder}.zip"
-              git commit -m "Updated Lambda zip for ${folder}"
+              git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
               git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
               
               echo "✅ Changes pushed to branch: $BRANCH_NAME"
