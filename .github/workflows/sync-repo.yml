@@ -67,6 +67,10 @@ jobs:
         env:
           GIT_TOKEN: ${{ secrets.SYNC }}
 
+      - name: Install GitHub CLI
+        run: |
+          curl -s https://cli.github.com/install.sh | bash
+
       - name: Create and Push Branch for Each Changed Folder
         run: |
           cd destination-repo
@@ -88,16 +92,18 @@ jobs:
               
               echo "✅ Changes pushed to branch: $BRANCH_NAME"
 
-              # Create a Pull Request for the new branch
+              # Create a Pull Request for the new branch using GitHub CLI
               PR_TITLE="Sync Lambda changes: ${folder}"
               PR_BODY="This PR updates the Lambda zip for the **${folder}** function.\n\n👤 Author: ${{ env.author }}\n📅 Date: ${{ env.date }}"
 
+              # Create the PR with the GitHub CLI, using github.token
               gh pr create --repo amey-ev/DestinationRepo \
                 --head "$BRANCH_NAME" \
                 --base main \
                 --title "$PR_TITLE" \
                 --body "$PR_BODY" \
-                --label "automation"
+                --label "automation" \
+                --token ${{ secrets.GITHUB_TOKEN }}
               
               echo "✅ Pull request created for branch: $BRANCH_NAME"
             fi
