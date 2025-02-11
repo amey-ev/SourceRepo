@@ -89,7 +89,8 @@ jobs:
               PR_TITLE="Sync Lambda changes: ${folder}"
               PR_BODY="This PR updates the Lambda zip for the **${folder}** function.\n\n👤 Author: ${{ env.author }}\n📅 Date: ${{ env.date }}"
 
-              # Create the PR with the GitHub CLI, using github.token for authentication
+              # Ensure GH_TOKEN is set
+              echo "GH_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
               gh pr create --repo amey-ev/DestinationRepo \
                 --head "$BRANCH_NAME" \
                 --base main \
