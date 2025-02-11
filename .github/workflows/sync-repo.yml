@@ -3,7 +3,7 @@ name: Sync Lambda to Terraform
 on:
   push:
     branches:
-      - main  # Runs only on changes to `main`
+      - main  
 
 jobs:
   sync:
@@ -13,15 +13,22 @@ jobs:
       - name: Checkout Lambda Repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 2  # Get the last 2 commits to check changes
+          fetch-depth: 2  
+
+      - name: Install GitHub CLI
+        run: |
+          sudo apt update
+          sudo apt install -y gh
+
+      - name: Set GitHub Token
+        run: echo "GH_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
 
       - name: Get Changed Folders & Author Info
         id: changed_folders
         run: |
           echo "🔍 Checking changed folders..."
           CHANGED_FOLDERS=$(git diff --name-only HEAD^ HEAD | awk -F'/' '{print $1}' | sort -u | uniq)
-          
-          # Filter out unwanted folders like .github, .gitignore, etc.
+
           FILTERED_FOLDERS=""
           for folder in $CHANGED_FOLDERS; do
             if [[ "$folder" != ".github" && "$folder" != ".gitignore" && -d "$folder" ]]; then
@@ -29,30 +36,20 @@ jobs:
             fi
           done
 
-          # Convert multi-line output to space-separated string
           FILTERED_FOLDERS=$(echo "$FILTERED_FOLDERS" | tr '\n' ' ')
 
-          # Get commit author username
           AUTHOR_NAME=$(git log -1 --pretty=format:'%an' | tr ' ' '-')
-
-          # Get the date in a readable format (e.g., 11th-Feb-2025)
           DATE_FORMATTED=$(date +"%d-%b-%Y" | sed -E 's/^0//')
 
-          # Export as environment variables
           echo "folders=$FILTERED_FOLDERS" >> $GITHUB_ENV
           echo "author=$AUTHOR_NAME" >> $GITHUB_ENV
           echo "date=$DATE_FORMATTED" >> $GITHUB_ENV
 
-          echo "📝 Valid changed folders: $FILTERED_FOLDERS"
-          echo "👤 Author: $AUTHOR_NAME"
-          echo "📅 Date: $DATE_FORMATTED"
-
       - name: Zip Only Changed Folders
         run: |
-          mkdir -p zipped_files  # Create a directory for the zips
+          mkdir -p zipped_files
           for folder in ${{ env.folders }}; do
             if [ -d "$folder" ]; then
-              echo "📦 Zipping $folder..."
               zip -r "zipped_files/${folder}.zip" "$folder"
             fi
           done
@@ -63,41 +60,28 @@ jobs:
           cd destination-repo
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-        env:
-          GIT_TOKEN: ${{ secrets.SYNC }}
 
       - name: Push Changes to New Branch
         run: |
           cd destination-repo
           for folder in ${{ env.folders }}; do
             if [ -f "../zipped_files/${folder}.zip" ]; then
-              echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
               mv "../zipped_files/${folder}.zip" "lambdas/"
-
-              # Create a readable branch name
               BRANCH_NAME="update-${folder}-${{ env.author }}-${{ env.date }}"
-              BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-')  # Replace spaces with dashes
+              BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-')
 
               git checkout -b "$BRANCH_NAME"
               git add "lambdas/${folder}.zip"
               git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
               git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
-              
-              echo "✅ Changes pushed to branch: $BRANCH_NAME"
-
-              # Create a Pull Request for the new branch using GitHub CLI
-              PR_TITLE="Sync Lambda changes: ${folder}"
-              PR_BODY="This PR updates the Lambda zip for the **${folder}** function.\n\n👤 Author: ${{ env.author }}\n📅 Date: ${{ env.date }}"
-
-              # Ensure GH_TOKEN is set
-              echo "GH_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
-              gh pr create --repo amey-ev/DestinationRepo \
-                --head "$BRANCH_NAME" \
-                --base main \
-                --title "$PR_TITLE" \
-                --body "$PR_BODY" \
-                --label "automation"
-              
-              echo "✅ Pull request created for branch: $BRANCH_NAME"
             fi
+          done
+
+      - name: Create Pull Request
+        run: |
+          cd destination-repo
+          gh auth login --with-token <<< "${GH_TOKEN}"
+          for folder in ${{ env.folders }}; do
+            PR_TITLE="Sync Lambda changes for ${folder} by ${{ env.author }} on ${{ env.date }}"
+            gh pr create --base main --head "update-${folder}-${{ env.author }}-${{ env.date }}" --title "$PR_TITLE" --body "Automated PR to sync changes."
           done
