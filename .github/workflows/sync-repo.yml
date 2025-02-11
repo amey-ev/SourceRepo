@@ -3,7 +3,7 @@ name: Sync Lambda to Terraform
 on:
   push:
     branches:
-      - main  # Runs only when changes are pushed to `main`
+      - main  # Runs only on changes to `main`
 
 jobs:
   sync:
@@ -13,51 +13,44 @@ jobs:
       - name: Checkout Lambda Repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Fetch full history to compare with main
+          fetch-depth: 2  # Get the last 2 commits to check changes
 
       - name: Get Changed Folders & Author Info
         id: changed_folders
         run: |
-          echo "🔍 Detecting all changed folders in this push..."
-
-          # Get the latest commit hash of the main branch
-          git fetch origin main
-
-          # Get the list of changed files between HEAD (latest commit) and the latest commit on main
-          CHANGED_FILES=$(git diff --name-only origin/main HEAD)
-          echo "📝 Changed files: $CHANGED_FILES"
-
-          # Use git diff to get changes in specific directories
-          CHANGED_FOLDERS=$(echo "$CHANGED_FILES" | grep -E '^(codebase|devtools|testbench|quickstart)/' | awk -F'/' '{print $1}' | sort -u)
-
-          if [ -z "$CHANGED_FOLDERS" ]; then
-            echo "⚠️ No changed folders detected. Skipping..."
-            exit 1
-          fi
-
+          echo "🔍 Checking changed folders..."
+          CHANGED_FOLDERS=$(git diff --name-only HEAD^ HEAD | awk -F'/' '{print $1}' | sort -u | uniq)
+          
+          # Filter out unwanted folders like .github, .gitignore, etc.
           FILTERED_FOLDERS=""
+
           for folder in $CHANGED_FOLDERS; do
-            if [[ -d "$folder" ]]; then
+            if [[ "$folder" != ".github" && "$folder" != ".gitignore" && -d "$folder" ]]; then
               FILTERED_FOLDERS+="$folder "
             fi
           done
 
-          if [ -z "$FILTERED_FOLDERS" ]; then
-            echo "⚠️ No valid folders detected. Exiting..."
-            exit 1
-          fi
+          # Convert multi-line output to space-separated string
+          FILTERED_FOLDERS=$(echo "$FILTERED_FOLDERS" | tr '\n' ' ')
 
+          # Get commit author username
           AUTHOR_NAME=$(git log -1 --pretty=format:'%an' | tr ' ' '-')
+
+          # Get the date in a readable format (e.g., 11th-Feb-2025)
           DATE_FORMATTED=$(date +"%d-%b-%Y" | sed -E 's/^0//')
 
-          BRANCH_NAME="update-$(echo "$FILTERED_FOLDERS" | tr ' ' '-')-${AUTHOR_NAME}-${DATE_FORMATTED}"
-
+          # Export as environment variables
           echo "folders=$FILTERED_FOLDERS" >> $GITHUB_ENV
-          echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
+          echo "author=$AUTHOR_NAME" >> $GITHUB_ENV
+          echo "date=$DATE_FORMATTED" >> $GITHUB_ENV
+
+          echo "📝 Valid changed folders: $FILTERED_FOLDERS"
+          echo "👤 Author: $AUTHOR_NAME"
+          echo "📅 Date: $DATE_FORMATTED"
 
       - name: Zip Only Changed Folders
         run: |
-          mkdir -p zipped_files
+          mkdir -p zipped_files  # Create a directory for the zips
           for folder in ${{ env.folders }}; do
             if [ -d "$folder" ]; then
               echo "📦 Zipping $folder..."
@@ -74,59 +67,38 @@ jobs:
         env:
           GIT_TOKEN: ${{ secrets.SYNC }}
 
-      - name: Create and Push Branch to Terraform Repo
+      - name: Create and Push Branch for Each Changed Folder
         run: |
           cd destination-repo
-          git checkout -b "${{ env.branch_name }}"
-
-          CHANGES_DETECTED=false
           for folder in ${{ env.folders }}; do
             if [ -f "../zipped_files/${folder}.zip" ]; then
-              echo "📂 Moving ${folder}.zip to Terraform repo..."
-              mv -f "../zipped_files/${folder}.zip" "lambdas/${folder}.zip"
+              echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
+              mv "../zipped_files/${folder}.zip" "lambdas/"
+
+              # Create a readable branch name
+              BRANCH_NAME="update-${folder}-${{ env.author }}-${{ env.date }}"
+              BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-')  # Replace spaces with dashes
+
+              git checkout -b "$BRANCH_NAME"
+              
+
               git add "lambdas/${folder}.zip"
-              CHANGES_DETECTED=true
+              git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
+              git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
+              
+              echo "✅ Changes pushed to branch: $BRANCH_NAME"
+
+              # Create a Pull Request for the new branch
+              PR_TITLE="Sync Lambda changes: ${folder}"
+              PR_BODY="This PR updates the Lambda zip for the **${folder}** function.\n\n👤 Author: ${{ env.author }}\n📅 Date: ${{ env.date }}"
+
+              gh pr create --repo amey-ev/DestinationRepo \
+                --head "$BRANCH_NAME" \
+                --base main \
+                --title "$PR_TITLE" \
+                --body "$PR_BODY" \
+                --label "automation"
+              
+              echo "✅ Pull request created for branch: $BRANCH_NAME"
             fi
           done
-
-          if [ "$CHANGES_DETECTED" = false ]; then
-            echo "⚠️ No changes detected. Skipping commit."
-            exit 1
-          fi
-
-          git commit -m "Updated Lambda zip(s) for ${{ env.folders }} by ${{ env.author }} on ${{ env.date }}"
-          git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "${{ env.branch_name }}"
-        env:
-          GIT_TOKEN: ${{ secrets.SYNC }}
-
-      - name: Create Pull Request
-        run: |
-          if [[ -z "${{ env.folders }}" ]]; then
-            echo "❌ No changed folders detected. Skipping PR."
-            exit 0
-          fi
-
-          PR_TITLE="Sync Lambda changes: ${{ env.folders }}"
-          PR_BODY="This PR updates the following Lambda functions: **${{ env.folders }}**\n\n👤 Author: ${{ env.author }}\n📅 Date: ${{ env.date }}"
-
-          ASSIGNEE_VALID=$(gh api users/${{ env.author }} --silent || echo "INVALID")
-
-          if [[ "$ASSIGNEE_VALID" == "INVALID" ]]; then
-            echo "⚠️ Warning: Assignee '${{ env.author }}' not found. Skipping assignment."
-            gh pr create --repo amey-ev/DestinationRepo \
-              --head "${{ env.branch_name }}" \
-              --base main \
-              --title "$PR_TITLE" \
-              --body "$PR_BODY" \
-              --label "automation"
-          else
-            gh pr create --repo amey-ev/DestinationRepo \
-              --head "${{ env.branch_name }}" \
-              --base main \
-              --title "$PR_TITLE" \
-              --body "$PR_BODY" \
-              --assignee "${{ env.author }}" \
-              --label "automation"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
