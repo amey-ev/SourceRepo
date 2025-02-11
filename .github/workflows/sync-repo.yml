@@ -62,7 +62,7 @@ jobs:
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
         env:
-          GIT_TOKEN: ${{ secrets.SYNC }}
+          GIT_TOKEN: ${{ secrets.SYNC_CHANGES_TO_ZIP }}
 
       - name: Push Changes to New Branch
         run: |
@@ -78,7 +78,7 @@ jobs:
               git checkout -b "$BRANCH_NAME"
               git add "lambdas/${folder}.zip"
               git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
-              git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
+              git push https://x-access-token:${{ secrets.SYNC_CHANGES_TO_ZIP }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
               
               echo "✅ Changes pushed to branch: $BRANCH_NAME"
 
