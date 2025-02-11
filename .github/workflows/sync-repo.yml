@@ -3,7 +3,11 @@ name: Sync Lambda to Terraform
 on:
   push:
     branches:
-      - main  
+      - main  # Runs only on changes to `main`
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   sync:
@@ -13,15 +17,7 @@ jobs:
       - name: Checkout Lambda Repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 2  
-
-      - name: Install GitHub CLI
-        run: |
-          sudo apt update
-          sudo apt install -y gh
-
-      - name: Set GitHub Token
-        run: echo "GH_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
+          fetch-depth: 2  # Get the last 2 commits to check changes
 
       - name: Get Changed Folders & Author Info
         id: changed_folders
@@ -45,11 +41,16 @@ jobs:
           echo "author=$AUTHOR_NAME" >> $GITHUB_ENV
           echo "date=$DATE_FORMATTED" >> $GITHUB_ENV
 
+          echo "📝 Valid changed folders: $FILTERED_FOLDERS"
+          echo "👤 Author: $AUTHOR_NAME"
+          echo "📅 Date: $DATE_FORMATTED"
+
       - name: Zip Only Changed Folders
         run: |
           mkdir -p zipped_files
           for folder in ${{ env.folders }}; do
             if [ -d "$folder" ]; then
+              echo "📦 Zipping $folder..."
               zip -r "zipped_files/${folder}.zip" "$folder"
             fi
           done
@@ -60,20 +61,28 @@ jobs:
           cd destination-repo
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
+        env:
+          GIT_TOKEN: ${{ secrets.SYNC }}
 
       - name: Push Changes to New Branch
         run: |
           cd destination-repo
           for folder in ${{ env.folders }}; do
             if [ -f "../zipped_files/${folder}.zip" ]; then
+              echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
               mv "../zipped_files/${folder}.zip" "lambdas/"
+
               BRANCH_NAME="update-${folder}-${{ env.author }}-${{ env.date }}"
               BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-')
 
               git checkout -b "$BRANCH_NAME"
               git add "lambdas/${folder}.zip"
               git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
-              git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
+              git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
+              
+              echo "✅ Changes pushed to branch: $BRANCH_NAME"
+
+              echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
             fi
           done
 
@@ -81,11 +90,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔐 Logging in to GitHub CLI..."
-          echo $GH_TOKEN | gh auth login --with-token
-
           cd destination-repo
-          for folder in ${{ env.folders }}; do
-            PR_TITLE="Sync Lambda changes for ${folder} by ${{ env.author }} on ${{ env.date }}"
-            gh pr create --base main --head "update-${folder}-${{ env.author }}-${{ env.date }}" --title "$PR_TITLE" --body "Automated PR to sync changes."
-          done
+          gh pr create \
+            --base main \
+            --head "${{ env.branch_name }}" \
+            --title "Sync Lambda changes: ${{ env.folders }}" \
+            --body "This PR updates the Lambda function(s): ${{ env.folders }} by ${{ env.author }} on ${{ env.date }}"
