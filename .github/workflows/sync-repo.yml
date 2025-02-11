@@ -23,7 +23,6 @@ jobs:
           
           # Filter out unwanted folders like .github, .gitignore, etc.
           FILTERED_FOLDERS=""
-
           for folder in $CHANGED_FOLDERS; do
             if [[ "$folder" != ".github" && "$folder" != ".gitignore" && -d "$folder" ]]; then
               FILTERED_FOLDERS+="$folder "
@@ -67,12 +66,7 @@ jobs:
         env:
           GIT_TOKEN: ${{ secrets.SYNC }}
 
-      - name: Install GitHub CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install gh
-
-      - name: Create and Push Branch for Each Changed Folder
+      - name: Push Changes to New Branch
         run: |
           cd destination-repo
           for folder in ${{ env.folders }}; do
@@ -85,8 +79,6 @@ jobs:
               BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-')  # Replace spaces with dashes
 
               git checkout -b "$BRANCH_NAME"
-              
-
               git add "lambdas/${folder}.zip"
               git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
               git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
@@ -97,14 +89,13 @@ jobs:
               PR_TITLE="Sync Lambda changes: ${folder}"
               PR_BODY="This PR updates the Lambda zip for the **${folder}** function.\n\n👤 Author: ${{ env.author }}\n📅 Date: ${{ env.date }}"
 
-              # Create the PR with the GitHub CLI, using github.token
+              # Create the PR with the GitHub CLI, using github.token for authentication
               gh pr create --repo amey-ev/DestinationRepo \
                 --head "$BRANCH_NAME" \
                 --base main \
                 --title "$PR_TITLE" \
                 --body "$PR_BODY" \
-                --label "automation" \
-                --token ${{ secrets.GITHUB_TOKEN }}
+                --label "automation"
               
               echo "✅ Pull request created for branch: $BRANCH_NAME"
             fi
