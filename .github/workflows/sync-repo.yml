@@ -3,11 +3,13 @@ name: Sync Lambda to Terraform
 on:
   push:
     branches:
-      - main  # Runs only on changes to `main`
+      - main
 
 permissions:
   contents: write
   pull-requests: write
+  actions: read
+  repository-projects: write
 
 jobs:
   sync:
@@ -17,40 +19,20 @@ jobs:
       - name: Checkout Lambda Repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 2  # Get the last 2 commits to check changes
+          fetch-depth: 2
 
       - name: Get Changed Folders & Author Info
         id: changed_folders
         run: |
-          echo "🔍 Checking changed folders..."
           CHANGED_FOLDERS=$(git diff --name-only HEAD^ HEAD | awk -F'/' '{print $1}' | sort -u | uniq)
-
-          FILTERED_FOLDERS=""
-          for folder in $CHANGED_FOLDERS; do
-            if [[ "$folder" != ".github" && "$folder" != ".gitignore" && -d "$folder" ]]; then
-              FILTERED_FOLDERS+="$folder "
-            fi
-          done
-
-          FILTERED_FOLDERS=$(echo "$FILTERED_FOLDERS" | tr '\n' ' ')
-
-          AUTHOR_NAME=$(git log -1 --pretty=format:'%an' | tr ' ' '-')
-          DATE_FORMATTED=$(date +"%d-%b-%Y" | sed -E 's/^0//')
-
+          FILTERED_FOLDERS=$(echo "$CHANGED_FOLDERS" | grep -Ev '(^\.github$|^\.gitignore$)' | tr '\n' ' ')
           echo "folders=$FILTERED_FOLDERS" >> $GITHUB_ENV
-          echo "author=$AUTHOR_NAME" >> $GITHUB_ENV
-          echo "date=$DATE_FORMATTED" >> $GITHUB_ENV
-
-          echo "📝 Valid changed folders: $FILTERED_FOLDERS"
-          echo "👤 Author: $AUTHOR_NAME"
-          echo "📅 Date: $DATE_FORMATTED"
 
       - name: Zip Only Changed Folders
         run: |
           mkdir -p zipped_files
           for folder in ${{ env.folders }}; do
             if [ -d "$folder" ]; then
-              echo "📦 Zipping $folder..."
               zip -r "zipped_files/${folder}.zip" "$folder"
             fi
           done
@@ -61,38 +43,32 @@ jobs:
           cd destination-repo
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-        env:
-          GIT_TOKEN: ${{ secrets.SYNC_CHANGES_TO_ZIP }}
 
       - name: Push Changes to New Branch
         run: |
           cd destination-repo
           for folder in ${{ env.folders }}; do
             if [ -f "../zipped_files/${folder}.zip" ]; then
-              echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
               mv "../zipped_files/${folder}.zip" "lambdas/"
-
-              BRANCH_NAME="update-${folder}-${{ env.author }}-${{ env.date }}"
-              BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-')
-
+              BRANCH_NAME="update-${folder}-$(date +'%Y%m%d%H%M%S')"
               git checkout -b "$BRANCH_NAME"
               git add "lambdas/${folder}.zip"
-              git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
+              git commit -m "Updated Lambda zip for ${folder}"
               git push https://x-access-token:${{ secrets.SYNC_CHANGES_TO_ZIP }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
-              
-              echo "✅ Changes pushed to branch: $BRANCH_NAME"
-
               echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
             fi
           done
 
+      - name: Authenticate gh CLI
+        run: echo ${{ secrets.SYNC_CHANGES_TO_ZIP }} | gh auth login --with-token
+
       - name: Create Pull Request
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd destination-repo
           gh pr create \
             --base main \
             --head "${{ env.branch_name }}" \
             --title "Sync Lambda changes: ${{ env.folders }}" \
-            --body "This PR updates the Lambda function(s): ${{ env.folders }} by ${{ env.author }} on ${{ env.date }}"
+            --body "This PR updates the Lambda function(s): ${{ env.folders }}"
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_CHANGES_TO_ZIP }}
