@@ -57,6 +57,7 @@ jobs:
           cd destination-repo
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
+          git checkout -b  github-bot/$CHANGED_FOLDERS
           git add lambdas/
           git commit -m "Updated Lambda zips for changed folders"
-          git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git main
+          git push -f origin https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git
