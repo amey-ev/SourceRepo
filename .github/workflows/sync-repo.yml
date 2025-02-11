@@ -73,14 +73,18 @@ jobs:
               git checkout -b "$BRANCH_NAME"
               git add "lambdas/${folder}.zip"
               git commit -m "Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
-              git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
+              git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
             fi
           done
 
       - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "🔐 Logging in to GitHub CLI..."
+          echo $GH_TOKEN | gh auth login --with-token
+
           cd destination-repo
-          gh auth login --with-token <<< "${GH_TOKEN}"
           for folder in ${{ env.folders }}; do
             PR_TITLE="Sync Lambda changes for ${folder} by ${{ env.author }} on ${{ env.date }}"
             gh pr create --base main --head "update-${folder}-${{ env.author }}-${{ env.date }}" --title "$PR_TITLE" --body "Automated PR to sync changes."
