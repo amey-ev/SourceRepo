@@ -9,6 +9,14 @@ permissions:
   contents: write
   pull-requests: write
 
+env:
+  LAMBDA_REPO: ${{ github.repository }}  # 🚀 Auto-detect repo
+  DESTINATION_REPO: "amey-ev/DestinationRepo"  # 🔧 Change this for other Terraform repos
+  DESTINATION_PATH: "lambdas/"  # 📂 Where the zipped files will be placed in Terraform repo
+  GIT_USER: "GitHub Actions"
+  GIT_EMAIL: "github-actions@github.com"
+  GIT_BRANCH_PREFIX: "update-lambda"  # 🔀 Prefix for new branches
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -17,7 +25,7 @@ jobs:
       - name: 🔄 Checkout Lambda Repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 2  # ⏳ Only fetch last 2 commits for diff check
+          fetch-depth: 2
 
       - name: 🔍 Detect Changed Folders
         id: changed_folders
@@ -25,7 +33,6 @@ jobs:
           echo "🧐 Identifying changed folders..."
           CHANGED_FOLDERS=$(git diff --dirstat=files,0 HEAD^ HEAD | awk '{print $2}' | cut -d/ -f1 | sort -u)
           
-          # Filter out unwanted changes
           FILTERED_FOLDERS=""
           for folder in $CHANGED_FOLDERS; do
             if [[ -d "$folder" && "$folder" != ".github" && "$folder" != ".gitignore" ]]; then
@@ -33,7 +40,7 @@ jobs:
             fi
           done
           
-          FILTERED_FOLDERS=$(echo "$FILTERED_FOLDERS" | tr '\n' ' ')  # Remove new lines
+          FILTERED_FOLDERS=$(echo "$FILTERED_FOLDERS" | tr '\n' ' ')  
 
           if [[ -z "$FILTERED_FOLDERS" ]]; then
             echo "⚠️ No valid folders changed. Exiting..."
@@ -56,7 +63,6 @@ jobs:
           mkdir -p zipped_files
           for folder in ${{ env.folders }}; do
             if [[ -d "$folder" ]]; then
-              echo "🗜️ Zipping $folder..."
               zip -r "zipped_files/${folder}.zip" "$folder"
               echo "✅ Created zip: zipped_files/${folder}.zip"
             fi
@@ -65,10 +71,10 @@ jobs:
       - name: 🌎 Clone Terraform Repo
         run: |
           echo "🔄 Cloning Terraform repository..."
-          git clone https://github.com/amey-ev/DestinationRepo.git destination-repo
+          git clone https://github.com/${{ env.DESTINATION_REPO }}.git destination-repo
           cd destination-repo
-          git config --global user.email "github-actions@github.com"
-          git config --global user.name "GitHub Actions"
+          git config --global user.email "${{ env.GIT_EMAIL }}"
+          git config --global user.name "${{ env.GIT_USER }}"
           echo "✅ Repository cloned successfully."
 
       - name: 🚀 Push Changes to New Branch
@@ -77,15 +83,15 @@ jobs:
           for folder in ${{ env.folders }}; do
             if [[ -f "../zipped_files/${folder}.zip" ]]; then
               echo "📂 Moving ${folder}.zip to Terraform repo..."
-              mv "../zipped_files/${folder}.zip" "lambdas/"
+              mv "../zipped_files/${folder}.zip" "${{ env.DESTINATION_PATH }}"
 
-              BRANCH_NAME="update-${folder}-${{ env.author }}-${{ env.date }}"
-              BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-' | tr -cd '[:alnum:]-')  # Remove invalid characters
+              BRANCH_NAME="${{ env.GIT_BRANCH_PREFIX }}-${folder}-${{ env.author }}-${{ env.date }}"
+              BRANCH_NAME=$(echo "$BRANCH_NAME" | tr ' ' '-' | tr -cd '[:alnum:]-')
 
               git checkout -b "$BRANCH_NAME"
-              git add "lambdas/${folder}.zip"
+              git add "${{ env.DESTINATION_PATH }}${folder}.zip"
               git commit -m "🔄 Updated Lambda zip for ${folder} by ${{ env.author }} on ${{ env.date }}"
-              git push --force https://x-access-token:${{ secrets.SYNC_CHANGES_TO_ZIP }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
+              git push --force https://x-access-token:${{ secrets.SYNC_CHANGES_TO_ZIP }}@github.com/${{ env.DESTINATION_REPO }}.git "$BRANCH_NAME"
               
               echo "✅ Changes pushed to branch: $BRANCH_NAME"
               echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
