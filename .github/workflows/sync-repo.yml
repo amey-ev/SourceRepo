@@ -41,23 +41,27 @@ jobs:
       - name: Clone Terraform Repo
         run: |
           git clone https://github.com/amey-ev/DestinationRepo.git destination-repo
-          mkdir -p destination-repo/lambdas  # Ensure the target folder exists
-
-          for folder in ${{ env.folders }}; do
-            if [ -f "zipped_files/${folder}.zip" ]; then
-              echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
-              mv "zipped_files/${folder}.zip" "destination-repo/lambdas/"
-            fi
-          done
-        env:
-          GIT_TOKEN: ${{ secrets.SYNC }}
-
-      - name: Commit and Push to Terraform Repo
-        run: |
           cd destination-repo
           git config --global user.email "github-actions@github.com"
           git config --global user.name "GitHub Actions"
-          git checkout -b  github-bot/$CHANGED_FOLDERS
-          git add lambdas/
-          git commit -m "Updated Lambda zips for changed folders"
-          git push -f origin https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git
+        env:
+          GIT_TOKEN: ${{ secrets.SYNC }}
+
+      - name: Push Changes to New Branch
+        run: |
+          cd destination-repo
+          for folder in ${{ env.folders }}; do
+            if [ -f "../zipped_files/${folder}.zip" ]; then
+              echo "📂 Moving ${folder}.zip to Terraform repo's lambdas/ directory..."
+              mv "../zipped_files/${folder}.zip" "lambdas/"
+
+              BRANCH_NAME="update-${folder}-$(date +%Y%m%d%H%M%S)"
+              git checkout -b "$BRANCH_NAME"
+              
+              git add "lambdas/${folder}.zip"
+              git commit -m "Updated Lambda zip for ${folder}"
+              git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "$BRANCH_NAME"
+              
+              echo "✅ Changes pushed to branch: $BRANCH_NAME"
+            fi
+          done
