@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Lambda Repo
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Fetch full history
+          fetch-depth: 0  # Fetch full history to compare with main
 
       - name: Get Changed Folders & Author Info
         id: changed_folders
@@ -23,26 +23,29 @@ jobs:
           BASE_COMMIT=$(git merge-base origin/main HEAD)
           CHANGED_FOLDERS=$(git diff --name-only "$BASE_COMMIT" HEAD | awk -F'/' '{print $1}' | sort -u | uniq)
 
+          if [ -z "$CHANGED_FOLDERS" ]; then
+            echo "⚠️ No changed folders detected. Skipping..."
+            exit 1
+          fi
+
           FILTERED_FOLDERS=""
           for folder in $CHANGED_FOLDERS; do
-            if [[ "$folder" != ".github" && "$folder" != ".gitignore" && -d "$folder" ]]; then
+            if [[ -d "$folder" ]]; then
               FILTERED_FOLDERS+="$folder "
             fi
           done
 
-          FILTERED_FOLDERS=$(echo "$FILTERED_FOLDERS" | tr '\n' ' ')
+          if [ -z "$FILTERED_FOLDERS" ]; then
+            echo "⚠️ No valid folders detected. Exiting..."
+            exit 1
+          fi
+
           AUTHOR_NAME=$(git log -1 --pretty=format:'%an' | tr ' ' '-')
           DATE_FORMATTED=$(date +"%d-%b-%Y" | sed -E 's/^0//')
 
-          if [[ $(echo "$FILTERED_FOLDERS" | wc -w) -gt 1 ]]; then
-            BRANCH_NAME="update-multiple-folders-${AUTHOR_NAME}-${DATE_FORMATTED}"
-          else
-            BRANCH_NAME="update-$(echo "$FILTERED_FOLDERS" | tr ' ' '-')-${AUTHOR_NAME}-${DATE_FORMATTED}"
-          fi
+          BRANCH_NAME="update-$(echo "$FILTERED_FOLDERS" | tr ' ' '-')-${AUTHOR_NAME}-${DATE_FORMATTED}"
 
           echo "folders=$FILTERED_FOLDERS" >> $GITHUB_ENV
-          echo "author=$AUTHOR_NAME" >> $GITHUB_ENV
-          echo "date=$DATE_FORMATTED" >> $GITHUB_ENV
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
 
       - name: Zip Only Changed Folders
@@ -64,8 +67,7 @@ jobs:
         env:
           GIT_TOKEN: ${{ secrets.SYNC }}
 
-      - name: Move Zipped Files & Detect Changes
-        id: detect_changes
+      - name: Create and Push Branch to Terraform Repo
         run: |
           cd destination-repo
           git checkout -b "${{ env.branch_name }}"
@@ -75,19 +77,20 @@ jobs:
             if [ -f "../zipped_files/${folder}.zip" ]; then
               echo "📂 Moving ${folder}.zip to Terraform repo..."
               mv -f "../zipped_files/${folder}.zip" "lambdas/${folder}.zip"
-
               git add "lambdas/${folder}.zip"
               CHANGES_DETECTED=true
             fi
           done
 
           if [ "$CHANGES_DETECTED" = false ]; then
-            echo "⚠️ No changes detected. Skipping commit and PR."
-            exit 0
+            echo "⚠️ No changes detected. Skipping commit."
+            exit 1
           fi
 
           git commit -m "Updated Lambda zip(s) for ${{ env.folders }} by ${{ env.author }} on ${{ env.date }}"
           git push https://x-access-token:${{ secrets.SYNC }}@github.com/amey-ev/DestinationRepo.git "${{ env.branch_name }}"
+        env:
+          GIT_TOKEN: ${{ secrets.SYNC }}
 
       - name: Create Pull Request
         run: |
