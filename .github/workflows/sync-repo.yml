@@ -69,7 +69,8 @@ jobs:
 
       - name: Install GitHub CLI
         run: |
-          curl -s https://cli.github.com/install.sh | bash
+          sudo apt-get update
+          sudo apt-get install gh
 
       - name: Create and Push Branch for Each Changed Folder
         run: |
