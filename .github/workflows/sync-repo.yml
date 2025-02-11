@@ -91,16 +91,32 @@ jobs:
 
       - name: Create Pull Request
         run: |
+          if [[ -z "${{ env.folders }}" ]]; then
+            echo "❌ No changed folders detected. Skipping PR."
+            exit 0
+          fi
+
           PR_TITLE="Sync Lambda changes: ${{ env.folders }}"
           PR_BODY="This PR updates the following Lambda functions: **${{ env.folders }}**\n\n👤 Author: ${{ env.author }}\n📅 Date: ${{ env.date }}"
 
-          gh pr create --repo amey-ev/DestinationRepo \
-            --head "${{ env.branch_name }}" \
-            --base main \
-            --title "$PR_TITLE" \
-            --body "$PR_BODY" \
-            --assignee "${{ env.author }}" \
-            --label "automation"
+          ASSIGNEE_VALID=$(gh api users/${{ env.author }} --silent || echo "INVALID")
 
+          if [[ "$ASSIGNEE_VALID" == "INVALID" ]]; then
+            echo "⚠️ Warning: Assignee '${{ env.author }}' not found. Skipping assignment."
+            gh pr create --repo amey-ev/DestinationRepo \
+              --head "${{ env.branch_name }}" \
+              --base main \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --label "automation"
+          else
+            gh pr create --repo amey-ev/DestinationRepo \
+              --head "${{ env.branch_name }}" \
+              --base main \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY" \
+              --assignee "${{ env.author }}" \
+              --label "automation"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
